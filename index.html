@@ -12,16 +12,14 @@
     :root {
       --blue-light: #82C4D8;
       --blue-dark: #3249A2;
-      --gold: #EAB534; /* kayak + headline */
-      --bg: #0b143a;   /* deep ocean background */
+      --gold: #EAB534; /* type color */
     }
 
     * { box-sizing: border-box; }
-    html, body { height: 100%; }
-    body {
+    html, body {
       margin: 0;
       min-height: 100vh;
-      background: var(--bg);
+      background: var(--blue-light);
       color: var(--gold);
       display: grid;
       place-items: center;
@@ -41,9 +39,6 @@
       font-size: clamp(22px, 5.5vw, 42px);
       letter-spacing: 0.02em;
       color: var(--gold);
-      text-shadow:
-        0 0 6px rgba(0,0,0,0.25),
-        0 2px 18px rgba(0,0,0,0.35);
       z-index: 2;
       user-select: none;
     }
@@ -61,7 +56,6 @@
     .centerpiece img {
       width: clamp(140px, 28vw, 280px);
       height: auto;
-      filter: drop-shadow(0 18px 26px rgba(0,0,0,0.35)) drop-shadow(0 3px 8px rgba(0,0,0,0.3));
       will-change: transform;
       animation: bob 6s ease-in-out infinite;
       image-rendering: -webkit-optimize-contrast;
@@ -83,7 +77,7 @@
       pointer-events: none; /* purely decorative */
     }
 
-    .strip { opacity: 0.95; }
+    .strip { opacity: 1; }
     .strip:nth-child(odd)  { fill: var(--blue-dark); }
     .strip:nth-child(even) { fill: var(--blue-light); }
 
@@ -93,11 +87,20 @@
     .strip.s3 { animation: drift 18s ease-in-out -6s infinite alternate; }
     .strip.s4 { animation: drift 15s ease-in-out -3s infinite alternate; }
     .strip.s5 { animation: drift 19s ease-in-out -8s infinite alternate; }
+    .strip.s6 { animation: drift 17s ease-in-out -5s infinite alternate; }
+    .strip.s7 { animation: drift 20s ease-in-out -7s infinite alternate; }
+    .strip.s8 { animation: drift 21s ease-in-out -9s infinite alternate; }
+    .strip.s9 { animation: drift 18s ease-in-out -10s infinite alternate; }
+    .strip.s10 { animation: drift 22s ease-in-out -11s infinite alternate; }
+    .strip.s11 { animation: drift 19s ease-in-out -12s infinite alternate; }
 
     @keyframes drift {
-      0%   { transform: translateY(-0.6%); }
-      100% { transform: translateY(0.6%); }
+      0%   { transform: translateY(-0.7%); }
+      100% { transform: translateY(0.7%); }
     }
+      100% { transform: translateY(0.7%); }
+    }
+
 
     /* Accessibility */
     @media (prefers-reduced-motion: reduce) {
@@ -111,39 +114,23 @@
   <!-- Decorative SVG background with vertical wave strips that subtly curve away near center
        to suggest water flowing around a top-down kayak. ViewBox Y is tall to give smooth curves. -->
   <svg class="waves" viewBox="0 0 100 1000" preserveAspectRatio="none" role="img" aria-hidden="true">
-    <!-- Left edge to first boundary -->
-    <path class="strip s1" d="
-      M 0 0
-      L 18 0
-      C 10 250, 26 750, 18 1000
-      L 0 1000 Z" />
-    <!-- Between boundary 1 (x~18) and 2 (x~36) -->
-    <path class="strip s2" d="
-      M 18 0
-      C 10 250, 26 750, 18 1000
-      L 36 1000
-      C 44 750, 28 250, 36 0 Z" />
-    <!-- Between boundary 2 (x~36) and 3 (x~54) - these curve outward a bit more near the center (y~500) -->
-    <path class="strip s3" d="
-      M 36 0
-      C 30 220, 40 420, 46 500
-      C 52 580, 42 780, 36 1000
-      L 54 1000
-      C 60 760, 56 560, 50 500
-      C 44 440, 58 240, 54 0 Z" />
-    <!-- Between boundary 3 (x~54) and 4 (x~72) -->
-    <path class="strip s4" d="
-      M 54 0
-      C 48 240, 62 440, 50 500
-      C 38 560, 40 760, 54 1000
-      L 72 1000
-      C 80 750, 66 350, 72 0 Z" />
-    <!-- Between boundary 4 (x~72) and right edge -->
-    <path class="strip s5" d="
-      M 72 0
-      C 66 250, 86 750, 72 1000
-      L 100 1000
-      L 100 0 Z" />
+    <!-- 11 vertical strips, alternating the two blues. Curves bulge slightly around y≈500 to imply flow around the kayak. -->
+    <path class="strip s1" d="M 0 0 L 9 0 C 5 250, 13 750, 9 1000 L 0 1000 Z" />
+    <path class="strip s2" d="M 9 0 C 5 250, 13 750, 9 1000 L 18 1000 C 22 750, 14 250, 18 0 Z" />
+
+    <path class="strip s3" d="M 18 0 C 14 220, 22 420, 26 500 C 30 580, 20 780, 18 1000 L 27 1000 C 33 770, 29 560, 25 500 C 21 440, 30 240, 27 0 Z" />
+    <path class="strip s4" d="M 27 0 C 22 240, 34 440, 30 500 C 26 560, 26 760, 27 1000 L 36 1000 C 42 760, 38 560, 33 500 C 28 440, 40 240, 36 0 Z" />
+
+    <path class="strip s5" d="M 36 0 C 30 240, 40 440, 44 500 C 48 560, 36 760, 36 1000 L 45 1000 C 52 760, 47 560, 42 500 C 37 440, 50 240, 45 0 Z" />
+    <path class="strip s6" d="M 45 0 C 40 240, 50 460, 50 500 C 50 540, 40 760, 45 1000 L 54 1000 C 60 760, 56 560, 50 500 C 44 440, 58 240, 54 0 Z" />
+
+    <path class="strip s7" d="M 54 0 C 48 240, 62 440, 58 500 C 54 560, 50 760, 54 1000 L 63 1000 C 70 760, 64 560, 60 500 C 56 440, 68 240, 63 0 Z" />
+    <path class="strip s8" d="M 63 0 C 58 240, 70 440, 66 500 C 62 560, 62 760, 63 1000 L 72 1000 C 78 760, 72 560, 68 500 C 64 440, 76 240, 72 0 Z" />
+
+    <path class="strip s9" d="M 72 0 C 66 240, 78 440, 76 500 C 74 560, 66 760, 72 1000 L 81 1000 C 86 760, 82 560, 78 500 C 74 440, 86 240, 81 0 Z" />
+    <path class="strip s10" d="M 81 0 C 76 250, 86 750, 81 1000 L 90 1000 C 94 750, 86 250, 90 0 Z" />
+
+    <path class="strip s11" d="M 90 0 C 86 250, 98 750, 90 1000 L 100 1000 L 100 0 Z" />
   </svg>
 
   <main class="centerpiece">
