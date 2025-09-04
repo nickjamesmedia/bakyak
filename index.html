@@ -138,18 +138,17 @@
       fb.style.display = 'none';
       img.addEventListener('error', () => { img.style.display = 'none'; fb.style.display = 'block'; });
 
-      // --- v0.3: Seek-based follow (decoupled from rotation) ---
+      // --- v0.4: direct pointing (no turn-rate clamp); smooth lerp to desired angle ---
       let targetX = 0.5, targetY = 0.5; // pointer (0..1)
       let x = 0.5, y = 0.5;             // kayak position (0..1)
       let vx = 0, vy = 0;               // velocity (units/sec)
       let angle = 0;                    // CSS rotation deg
 
-      const ORIENTATION_OFFSET = -90;   // emblem points up by default
-      const MAX_TURN = 22;              // clamp final rotation to +/-
-      const TURN_RATE = 180;            // deg/sec limit toward desired
-      const SEEK_ACCEL = 2.0;           // accel toward cursor
-      const MAX_SPEED = 1.2;            // cap normalized speed
-      const DAMP = 2.2;                 // velocity damping per second
+      const ORIENTATION_OFFSET = -90;   // emblem points up by default; tweak if needed
+      const SEEK_ACCEL = 1.6;           // accel toward cursor (scaled by distance)
+      const DAMP = 2.0;                 // velocity damping per second
+      const MAX_SPEED = 1.1;            // cap normalized speed
+      const ROT_LERP = 0.14;            // how quickly we rotate toward target (no hard rate limit)
 
       function setTarget(e){
         const r = document.body.getBoundingClientRect();
@@ -166,19 +165,21 @@
         const dt = Math.min(0.032, (now - last)/1000);
         last = now;
 
-        // --- movement (seek toward target) ---
+        // movement: seek with distance-scaled accel
         const dx = targetX - x;
         const dy = targetY - y;
         const dist = Math.hypot(dx, dy) || 0.0001;
         const ux = dx / dist, uy = dy / dist;
-        // small water flow sideways for life
+        const accel = SEEK_ACCEL * Math.min(dist * 2.5, 1.8);
+
+        // small water flow sideways
         const t = now * 0.001;
-        const flowX = 0.12 * (Math.sin(1.2*t + y*6.0) + 0.6*Math.sin(0.6*t + y*2.2));
+        const flowX = 0.08 * (Math.sin(1.2*t + y*6.0) + 0.5*Math.sin(0.6*t + y*2.0));
 
-        vx += (ux * SEEK_ACCEL + flowX) * dt;
-        vy += (uy * SEEK_ACCEL) * dt;
+        vx += (ux * accel + flowX) * dt;
+        vy += (uy * accel) * dt;
 
-        // damping & speed cap
+        // damping and speed limit
         const damp = Math.exp(-DAMP * dt);
         vx *= damp; vy *= damp;
         const sp = Math.hypot(vx, vy);
@@ -188,19 +189,10 @@
         x = Math.max(0, Math.min(1, x));
         y = Math.max(0, Math.min(1, y));
 
-        // --- rotation (face velocity; fallback to target if slow) ---
-        let desired = (sp > 0.02)
-          ? Math.atan2(vy, vx) * 180/Math.PI + ORIENTATION_OFFSET
-          : Math.atan2(dy, dx) * 180/Math.PI + ORIENTATION_OFFSET;
-        desired = wrapDeg(desired);
-        // rate-limit then clamp final output range
-        const maxStep = TURN_RATE * dt;
-        let diff = wrapDeg(desired - angle);
-        if (diff >  maxStep) diff =  maxStep;
-        if (diff < -maxStep) diff = -maxStep;
-        angle = wrapDeg(angle + diff);
-        if (angle >  MAX_TURN) angle =  MAX_TURN;
-        if (angle < -MAX_TURN) angle = -MAX_TURN;
+        // rotation: always point top toward cursor, smoothed via lerp (no rate cap or clamp)
+        const desired = wrapDeg(Math.atan2(dy, dx) * 180/Math.PI + ORIENTATION_OFFSET);
+        const diff = wrapDeg(desired - angle);
+        angle = wrapDeg(angle + diff * ROT_LERP);
 
         // Apply transform
         const maxX = 36, maxY = 20; // px travel from center
@@ -208,12 +200,11 @@
         const ty = (y - 0.5) * maxY * 2;
         wrap.style.transform = `translate(${tx}px, ${ty}px) rotate(${angle}deg)`;
 
-        // --- waves: abstract interference, amplitude scales a touch with speed; biased by kayak x ---
+        // waves: abstract interference + slight bias by kayak x
         const sway = (x - 0.5) * 6;
-        const amp = 1 + Math.min(1, sp / MAX_SPEED) * 0.6;
         strips.forEach((p, i) => {
           const phase = i * 0.55;
-          const off = (Math.sin(1.1*t + phase) * 2.2 + Math.sin(0.6*t + phase*1.7) * 1.0) * amp + sway;
+          const off = Math.sin(1.1*t + phase) * 2.2 + Math.sin(0.6*t + phase*1.7) * 1.0 + sway;
           p.setAttribute('transform', `translate(${off},0)`);
         });
 
