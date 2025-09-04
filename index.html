@@ -50,19 +50,20 @@
       padding: clamp(16px, 2vw, 24px);
     }
 
-    #kayakWrap { will-change: transform; }
+    #kayakWrap { position: relative; will-change: transform; transform-origin: 50% 50%; display: inline-block; }
 
-    .centerpiece img,
-    .centerpiece svg.kayak-fallback {
+    #kayakImg,
+    #kayakFallback {
       width: clamp(140px, 28vw, 280px);
       height: auto;
       display: block;
       background: transparent;
     }
 
-    .kayak-fallback { display: none; }
-    .kayak-fallback .gold { fill: var(--gold); }
-    .kayak-fallback .water { fill: var(--blue-light); }
+    /* Fallback starts truly hidden to avoid flash before CSS */
+    #kayakFallback { display: none; position: absolute; inset: 0; }
+    #kayakFallback .gold { fill: var(--gold); }
+    #kayakFallback .water { fill: var(--blue-light); }
 
     .waves {
       position: fixed;
@@ -113,7 +114,7 @@
     <div id="kayakWrap" aria-hidden="false">
       <img id="kayakImg" src="assets/emblem.svg" alt="Bakyak emblem — top-down kayak icon" />
       <!-- Fallback oval kayak if emblem fails to load -->
-      <svg id="kayakFallback" class="kayak-fallback" viewBox="0 0 256 256" role="img" aria-label="Kayak icon fallback">
+      <svg id="kayakFallback" viewBox="0 0 256 256" role="img" aria-label="Kayak icon fallback" style="display:none; position:absolute; inset:0;">
         <g class="gold">
           <path d="M128 8c-18 24-48 80-48 120s30 96 48 120c18-24 48-80 48-120S146 32 128 8z"/>
           <ellipse class="water" cx="128" cy="128" rx="30" ry="22"/>
@@ -127,58 +128,99 @@
 
   <script>
     (function() {
-      const prefersReduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
       const strips = Array.from(document.querySelectorAll('#waves .strip'));
       const wrap = document.getElementById('kayakWrap');
       const img = document.getElementById('kayakImg');
       const fb = document.getElementById('kayakFallback');
 
-      // Fallback if emblem doesn't load
-      img.addEventListener('error', () => {
-        img.style.display = 'none';
-        fb.style.display = 'block';
-      });
+      // Keep fallback truly hidden until an error occurs
+      fb.style.display = 'none';
+      img.addEventListener('error', () => { img.style.display = 'none'; fb.style.display = 'block'; });
 
-      let targetX = 0.5, targetY = 0.5;   // pointer target (0..1)
-      let kayakX = 0.5, kayakY = 0.5;     // eased kayak position (0..1)
+      // --- v0.3: Seek-based follow (decoupled from rotation) ---
+      let targetX = 0.5, targetY = 0.5; // pointer (0..1)
+      let x = 0.5, y = 0.5;             // kayak position (0..1)
+      let vx = 0, vy = 0;               // velocity (units/sec)
+      let angle = 0;                    // CSS rotation deg
 
-      function setTarget(e) {
-        const rect = document.body.getBoundingClientRect();
-        targetX = (e.clientX - rect.left) / rect.width;
-        targetY = (e.clientY - rect.top) / rect.height;
-        targetX = Math.max(0, Math.min(1, targetX));
-        targetY = Math.max(0, Math.min(1, targetY));
+      const ORIENTATION_OFFSET = -90;   // emblem points up by default
+      const MAX_TURN = 22;              // clamp final rotation to +/-
+      const TURN_RATE = 180;            // deg/sec limit toward desired
+      const SEEK_ACCEL = 2.0;           // accel toward cursor
+      const MAX_SPEED = 1.2;            // cap normalized speed
+      const DAMP = 2.2;                 // velocity damping per second
+
+      function setTarget(e){
+        const r = document.body.getBoundingClientRect();
+        targetX = Math.max(0, Math.min(1, (e.clientX - r.left)/r.width));
+        targetY = Math.max(0, Math.min(1, (e.clientY - r.top)/r.height));
       }
+      window.addEventListener('pointermove', setTarget, {passive:true});
+      window.addEventListener('pointerdown', setTarget, {passive:true});
 
-      window.addEventListener('pointermove', setTarget, { passive: true });
-      window.addEventListener('pointerdown', setTarget, { passive: true });
+      function wrapDeg(d){ return ((d + 180) % 360) - 180; }
 
-      const t0 = performance.now();
+      let last = performance.now();
+      function animate(now){
+        const dt = Math.min(0.032, (now - last)/1000);
+        last = now;
 
-      function animate(now) {
-        const t = (now - t0) * 0.001;
+        // --- movement (seek toward target) ---
+        const dx = targetX - x;
+        const dy = targetY - y;
+        const dist = Math.hypot(dx, dy) || 0.0001;
+        const ux = dx / dist, uy = dy / dist;
+        // small water flow sideways for life
+        const t = now * 0.001;
+        const flowX = 0.12 * (Math.sin(1.2*t + y*6.0) + 0.6*Math.sin(0.6*t + y*2.2));
 
-        // Kayak eases toward pointer (user controls kayak)
-        kayakX += (targetX - kayakX) * 0.08;
-        kayakY += (targetY - kayakY) * 0.08;
+        vx += (ux * SEEK_ACCEL + flowX) * dt;
+        vy += (uy * SEEK_ACCEL) * dt;
 
-        // Apply kayak translation in pixels
-        const maxX = 22; // px
-        const maxY = 12; // px
-        wrap.style.transform = `translate(${(kayakX - 0.5) * maxX * 2}px, ${(kayakY - 0.5) * maxY * 2}px)`;
+        // damping & speed cap
+        const damp = Math.exp(-DAMP * dt);
+        vx *= damp; vy *= damp;
+        const sp = Math.hypot(vx, vy);
+        if (sp > MAX_SPEED) { vx = vx/sp * MAX_SPEED; vy = vy/sp * MAX_SPEED; }
 
-        // Waves: abstract base flow + subtle bias that follows the KAYAK (not the cursor)
-        const sway = (kayakX - 0.5) * 8; // bias left/right based on kayak position
+        x += vx * dt; y += vy * dt;
+        x = Math.max(0, Math.min(1, x));
+        y = Math.max(0, Math.min(1, y));
+
+        // --- rotation (face velocity; fallback to target if slow) ---
+        let desired = (sp > 0.02)
+          ? Math.atan2(vy, vx) * 180/Math.PI + ORIENTATION_OFFSET
+          : Math.atan2(dy, dx) * 180/Math.PI + ORIENTATION_OFFSET;
+        desired = wrapDeg(desired);
+        // rate-limit then clamp final output range
+        const maxStep = TURN_RATE * dt;
+        let diff = wrapDeg(desired - angle);
+        if (diff >  maxStep) diff =  maxStep;
+        if (diff < -maxStep) diff = -maxStep;
+        angle = wrapDeg(angle + diff);
+        if (angle >  MAX_TURN) angle =  MAX_TURN;
+        if (angle < -MAX_TURN) angle = -MAX_TURN;
+
+        // Apply transform
+        const maxX = 36, maxY = 20; // px travel from center
+        const tx = (x - 0.5) * maxX * 2;
+        const ty = (y - 0.5) * maxY * 2;
+        wrap.style.transform = `translate(${tx}px, ${ty}px) rotate(${angle}deg)`;
+
+        // --- waves: abstract interference, amplitude scales a touch with speed; biased by kayak x ---
+        const sway = (x - 0.5) * 6;
+        const amp = 1 + Math.min(1, sp / MAX_SPEED) * 0.6;
         strips.forEach((p, i) => {
-          const phase = i * 0.7;
-          const base = Math.sin(t + phase) * 2.2; // abstract flowing
-          p.setAttribute('transform', `translate(${base + sway},0)`);
+          const phase = i * 0.55;
+          const off = (Math.sin(1.1*t + phase) * 2.2 + Math.sin(0.6*t + phase*1.7) * 1.0) * amp + sway;
+          p.setAttribute('transform', `translate(${off},0)`);
         });
 
-        if (!prefersReduce) requestAnimationFrame(animate);
+        if (!reduce) requestAnimationFrame(animate);
       }
 
-      if (!prefersReduce) requestAnimationFrame(animate);
+      if (!reduce) requestAnimationFrame(animate);
     })();
   </script>
 </body>
