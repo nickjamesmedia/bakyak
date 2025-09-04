@@ -4,7 +4,6 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>bakyak.ca — coming soon</title>
-  <!-- Barlow ExtraBold Italic -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Barlow:ital,wght@1,800&display=swap" rel="stylesheet">
@@ -12,31 +11,26 @@
     :root {
       --blue-light: #82C4D8;
       --blue-dark: #3249A2;
-      --gold: #EAB534; /* type color */
+      --gold: #EAB534;
     }
 
     * { box-sizing: border-box; }
     html, body { height: 100%; margin: 0; }
     body {
-      margin: 0;
       min-height: 100vh;
       background: var(--blue-light);
       color: var(--gold);
       display: grid;
       place-items: center;
       overflow: hidden;
-      font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Ubuntu, 'Helvetica Neue', Arial, sans-serif;
-      -webkit-font-smoothing: antialiased;
-      -moz-osx-font-smoothing: grayscale;
+      font-family: 'Barlow', system-ui, -apple-system, 'Segoe UI', Roboto, Ubuntu, 'Helvetica Neue', Arial, sans-serif;
     }
 
-    /* Headline */
     .headline {
       position: fixed;
       top: clamp(12px, 3vh, 28px);
       left: 50%;
       transform: translateX(-50%);
-      font-family: 'Barlow', system-ui, -apple-system, 'Segoe UI', Roboto, Ubuntu, sans-serif;
       font-weight: 800;
       font-style: italic;
       font-size: clamp(22px, 5.5vw, 42px);
@@ -47,7 +41,6 @@
       margin: 0;
     }
 
-    /* Center emblem */
     .centerpiece {
       position: relative;
       z-index: 4;
@@ -57,98 +50,135 @@
       padding: clamp(16px, 2vw, 24px);
     }
 
-    .centerpiece img {
+    #kayakWrap { will-change: transform; }
+
+    .centerpiece img,
+    .centerpiece svg.kayak-fallback {
       width: clamp(140px, 28vw, 280px);
       height: auto;
       display: block;
       background: transparent;
     }
 
-    /* Fullscreen SVG waves (vertical strips) */
+    .kayak-fallback { display: none; }
+    .kayak-fallback .gold { fill: var(--gold); }
+    .kayak-fallback .water { fill: var(--blue-light); }
+
     .waves {
       position: fixed;
       inset: 0;
       width: 100%;
       height: 100%;
       z-index: 1;
-      pointer-events: none; /* decorative */
+      pointer-events: none;
     }
 
-    .strip { opacity: 1; transform-origin: 50% 50%; }
     .strip:nth-child(odd)  { fill: var(--blue-dark); }
     .strip:nth-child(even) { fill: var(--blue-light); }
 
-    /* Respect reduced motion */
-    @media (prefers-reduced-motion: reduce) {
-      .strip { transition: none !important; }
+    footer {
+      position: fixed;
+      bottom: 8px;
+      left: 12px;
+      font-size: 12px;
+      color: var(--gold);
+      z-index: 5;
+      user-select: none;
     }
 
-    /* Make sure content is readable on small screens */
-    @media (max-width: 420px) {
-      .headline { font-size: 20px; }
+    @media (prefers-reduced-motion: reduce) {
+      #kayakWrap { transition: none !important; }
     }
   </style>
 </head>
 <body>
-  <h1 class="headline" aria-label="Coming soon">coming soon...</h1>
+  <h1 class="headline">coming soon...</h1>
 
-  <!-- SVG waves: 11 vertical strips. Only two blues used. -->
-  <svg id="waves" class="waves" viewBox="0 0 100 1000" preserveAspectRatio="none" role="img" aria-hidden="true">
+  <!-- Abstract vertical wave strips (static paths, animated via transforms) -->
+  <svg id="waves" class="waves" viewBox="0 0 100 1000" preserveAspectRatio="none" aria-hidden="true">
     <path class="strip" d="M 0 0 L 9 0 C 5 250, 13 750, 9 1000 L 0 1000 Z" />
     <path class="strip" d="M 9 0 C 5 250, 13 750, 9 1000 L 18 1000 C 22 750, 14 250, 18 0 Z" />
-
     <path class="strip" d="M 18 0 C 14 220, 22 420, 26 500 C 30 580, 20 780, 18 1000 L 27 1000 C 33 770, 29 560, 25 500 C 21 440, 30 240, 27 0 Z" />
     <path class="strip" d="M 27 0 C 22 240, 34 440, 30 500 C 26 560, 26 760, 27 1000 L 36 1000 C 42 760, 38 560, 33 500 C 28 440, 40 240, 36 0 Z" />
-
     <path class="strip" d="M 36 0 C 30 240, 40 440, 44 500 C 48 560, 36 760, 36 1000 L 45 1000 C 52 760, 47 560, 42 500 C 37 440, 50 240, 45 0 Z" />
     <path class="strip" d="M 45 0 C 40 240, 50 460, 50 500 C 50 540, 40 760, 45 1000 L 54 1000 C 60 760, 56 560, 50 500 C 44 440, 58 240, 54 0 Z" />
-
     <path class="strip" d="M 54 0 C 48 240, 62 440, 58 500 C 54 560, 50 760, 54 1000 L 63 1000 C 70 760, 64 560, 60 500 C 56 440, 68 240, 63 0 Z" />
     <path class="strip" d="M 63 0 C 58 240, 70 440, 66 500 C 62 560, 62 760, 63 1000 L 72 1000 C 78 760, 72 560, 68 500 C 64 440, 76 240, 72 0 Z" />
-
     <path class="strip" d="M 72 0 C 66 240, 78 440, 76 500 C 74 560, 66 760, 72 1000 L 81 1000 C 86 760, 82 560, 78 500 C 74 440, 86 240, 81 0 Z" />
     <path class="strip" d="M 81 0 C 76 250, 86 750, 81 1000 L 90 1000 C 94 750, 86 250, 90 0 Z" />
-
     <path class="strip" d="M 90 0 C 86 250, 98 750, 90 1000 L 100 1000 L 100 0 Z" />
   </svg>
 
   <main class="centerpiece">
-    <img src="assets/emblem.svg" alt="Bakyak emblem — top-down kayak icon" width="320" height="320" />
+    <div id="kayakWrap" aria-hidden="false">
+      <img id="kayakImg" src="assets/emblem.svg" alt="Bakyak emblem — top-down kayak icon" />
+      <!-- Fallback oval kayak if emblem fails to load -->
+      <svg id="kayakFallback" class="kayak-fallback" viewBox="0 0 256 256" role="img" aria-label="Kayak icon fallback">
+        <g class="gold">
+          <path d="M128 8c-18 24-48 80-48 120s30 96 48 120c18-24 48-80 48-120S146 32 128 8z"/>
+          <ellipse class="water" cx="128" cy="128" rx="30" ry="22"/>
+          <ellipse class="gold" cx="128" cy="128" rx="22" ry="16"/>
+        </g>
+      </svg>
+    </div>
   </main>
 
+  <footer>© Bak-Yak Inc.</footer>
+
   <script>
-    // Simple, lightweight JS-driven horizontal sway for SVG strips to create flowing effect.
-    // Keeps it flat (no shadows) and only uses the two blues + gold for type.
     (function() {
-      if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-
+      const prefersReduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
       const strips = Array.from(document.querySelectorAll('#waves .strip'));
-      if (!strips.length) return;
+      const wrap = document.getElementById('kayakWrap');
+      const img = document.getElementById('kayakImg');
+      const fb = document.getElementById('kayakFallback');
 
-      const start = performance.now();
+      // Fallback if emblem doesn't load
+      img.addEventListener('error', () => {
+        img.style.display = 'none';
+        fb.style.display = 'block';
+      });
 
-      // parameters
-      const amplitude = 3.5; // max horizontal shift in viewBox units (0-100)
-      const speed = 0.0008; // radians per ms
+      let targetX = 0.5, targetY = 0.5;   // pointer target (0..1)
+      let kayakX = 0.5, kayakY = 0.5;     // eased kayak position (0..1)
 
-      function animate(time) {
-        const t = (time - start);
-        strips.forEach((p, i) => {
-          // phase per strip
-          const phase = i * 0.9;
-          // create a center bias so strips near the middle shift a bit more
-          const bbox = p.getBBox();
-          const centerX = bbox.x + bbox.width / 2;
-          const centerBias = 1 - Math.abs((centerX - 50) / 50); // 1 at center, 0 at edges
-
-          const x = Math.sin(t * speed + phase) * amplitude * centerBias;
-          // apply transform in user units (viewBox width = 100)
-          p.setAttribute('transform', `translate(${x},0)`);
-        });
-        requestAnimationFrame(animate);
+      function setTarget(e) {
+        const rect = document.body.getBoundingClientRect();
+        targetX = (e.clientX - rect.left) / rect.width;
+        targetY = (e.clientY - rect.top) / rect.height;
+        targetX = Math.max(0, Math.min(1, targetX));
+        targetY = Math.max(0, Math.min(1, targetY));
       }
 
-      requestAnimationFrame(animate);
+      window.addEventListener('pointermove', setTarget, { passive: true });
+      window.addEventListener('pointerdown', setTarget, { passive: true });
+
+      const t0 = performance.now();
+
+      function animate(now) {
+        const t = (now - t0) * 0.001;
+
+        // Kayak eases toward pointer (user controls kayak)
+        kayakX += (targetX - kayakX) * 0.08;
+        kayakY += (targetY - kayakY) * 0.08;
+
+        // Apply kayak translation in pixels
+        const maxX = 22; // px
+        const maxY = 12; // px
+        wrap.style.transform = `translate(${(kayakX - 0.5) * maxX * 2}px, ${(kayakY - 0.5) * maxY * 2}px)`;
+
+        // Waves: abstract base flow + subtle bias that follows the KAYAK (not the cursor)
+        const sway = (kayakX - 0.5) * 8; // bias left/right based on kayak position
+        strips.forEach((p, i) => {
+          const phase = i * 0.7;
+          const base = Math.sin(t + phase) * 2.2; // abstract flowing
+          p.setAttribute('transform', `translate(${base + sway},0)`);
+        });
+
+        if (!prefersReduce) requestAnimationFrame(animate);
+      }
+
+      if (!prefersReduce) requestAnimationFrame(animate);
     })();
   </script>
 </body>
