@@ -65,7 +65,8 @@
   <script>
   (() => {
     'use strict';
-    // ---- Helpers / Config ----
+
+    // ---------- Helpers / Config ----------
     const COLOR_LIGHT = css('--light','#82C4D8');
     const COLOR_DARK  = css('--dark', '#3249A2');
     const COLOR_KAYAK = '#C8692D';
@@ -73,48 +74,49 @@
     function clamp(v,lo,hi){ return Math.max(lo,Math.min(hi,v)); }
     const mm = (q)=> (typeof matchMedia==='function' ? matchMedia(q) : {matches:false, addEventListener:()=>{}, removeEventListener:()=>{}});
 
-    // ---- Canvas ----
+    // ---------- Canvas ----------
     const canvas = document.getElementById('game');
     const ctx = canvas.getContext('2d');
     let dpr = Math.max(1, Math.min(3, window.devicePixelRatio||1));
     let width=0, height=0;
 
-    // ---- Time / state ----
+    // ---------- Time / state ----------
     let timeSec = 0, last = performance.now();
     const prefersReduce = mm('(prefers-reduced-motion: reduce)').matches;
 
-    // ---- Boat assets (logo + kayak as one "boat" element) ----
-    const logoImg = new Image();  logoImg.decoding='async';  logoImg.src='assets/logo.svg';
-    const kayakImg = new Image(); kayakImg.decoding='async'; kayakImg.src='assets/kayak.svg';
+    // ---------- Assets (logotype + kayak share same transform) ----------
+    const logoImg = new Image();   logoImg.decoding='async';  logoImg.src='assets/logotype.svg';
+    const kayakImg = new Image();  kayakImg.decoding='async'; kayakImg.src='assets/kayak.svg';
     let logoLoaded=false, kayakLoaded=false;
     logoImg.onload = ()=>{ logoLoaded=true; };
     kayakImg.onload= ()=>{ kayakLoaded=true; };
     logoImg.onerror = ()=>{ logoLoaded=false; };
     kayakImg.onerror= ()=>{ kayakLoaded=false; };
 
-    // ---- Kayak base sizes (desktop vs mobile) ----
+    // ---------- Responsive size (desktop vs mobile) ----------
     const BASE_LENGTH_DESKTOP = 125;
     const BASE_LENGTH_MOBILE  = BASE_LENGTH_DESKTOP * 0.5;
     const mobileMQ = mm('(max-width: 640px)');
     let targetLength = mobileMQ.matches ? BASE_LENGTH_MOBILE : BASE_LENGTH_DESKTOP;
-    let currentLength = targetLength; // eased
-    const SIZE_EASE_PER_SEC = 6; // exp ease rate
+    let currentLength = targetLength;       // eased
+    const SIZE_EASE_PER_SEC = 6;            // exp ease rate
 
     mobileMQ.addEventListener?.('change', (e)=>{
       targetLength = e.matches ? BASE_LENGTH_MOBILE : BASE_LENGTH_DESKTOP;
     });
 
-    // ---- Boat state ----
+    // ---------- Boat / modes ----------
     const NORTH = -Math.PI/2;
-    const MODE = { LOGO_IDLE:'LOGO_IDLE', TRANSITION:'TRANSITION', ACTIVE:'ACTIVE' };
-    let mode = MODE.LOGO_IDLE;              // start with the full logo
-    let lastUserTime = 0;                   // seconds since start of app time
-    const IDLE_AFTER = 12;                  // seconds
+    const MODE = { LOGO_IDLE:'LOGO_IDLE', PRE_IDLE:'PRE_IDLE', TRANSITION:'TRANSITION', ACTIVE:'ACTIVE' };
+    let mode = MODE.LOGO_IDLE;              // start centered, facing north, full logo visible
+    let lastUserTime = 0;
+    const IDLE_AFTER = 12;                  // seconds to attempt idle
+    const PRE_IDLE_WINDOW = 2.5;            // start wave easing before transition
 
-    // movement tuning (keep your current feel)
+    // movement feel (your values)
     const kayak = {
       x:0, y:0,
-      angle:NORTH,              // start facing north
+      angle:NORTH,
       tx:0, ty:0,
       maxSpeed:260, arriveGain:2.0,
       rollAmp:0.03, rollSpeed:0.8,
@@ -123,10 +125,15 @@
     };
     let initialized=false;
 
-    // ---- Wake (values scale with length each frame) ----
+    // logotype fade (independent of kayak, which is always drawn)
+    let logoAlpha = 1;           // start with logotype visible
+    let logoAlphaTarget = 1;     // target alpha (idle: 1, active/transitions: 0)
+    const LOGO_FADE_RATE = 0.8;  // per-second (lower = slower)
+
+    // ---------- Wake (scaled) ----------
     const wake = { points:[], maxAge:1.6, minSpeed:40 };
 
-    // ---- Resize ----
+    // ---------- Resize ----------
     function resize(){
       dpr = Math.max(1, Math.min(3, window.devicePixelRatio||1));
       const w = canvas.clientWidth, h = canvas.clientHeight;
@@ -143,9 +150,16 @@
     }
     addEventListener('resize', resize, {passive:true}); resize();
 
-    // ---- Waves: abstract ribbons rotated NNE->SSW, plus controllable drift ----
-    const WAVE_ROT = -Math.PI * 0.375; // -67.5°
-    const cosNegRot = Math.cos(-WAVE_ROT), sinNegRot = Math.sin(-WAVE_ROT);
+    // ---------- Waves: rotated ribbons with eased rotation + controllable drift ----------
+    const BASE_WAVE_ROT = -Math.PI * 0.375;       // NNE → SSW
+    let waveRot = BASE_WAVE_ROT;
+    let waveRotTarget = BASE_WAVE_ROT;
+    const WAVE_ROT_EASE_RATE = 1.25;               // rad/s easing
+
+    // drift offset (in rotated space)
+    let waveFlowX = 0, waveFlowY = 0;
+    const WAVE_FLOW_SPEED = 12;                    // px/sec in rotated space
+    const WAVE_FLOW_DECAY = 0.9;                   // per-second decay when active
 
     const waves = {
       thickness: 28,
@@ -156,12 +170,7 @@
       dx: 5
     };
 
-    // wave "flow" offset (so motion can point toward center in idle/transition)
-    let waveFlowX = 0, waveFlowY = 0;
-    const WAVE_FLOW_SPEED = 12;       // px/sec in rotated space
-    const WAVE_FLOW_DECAY = 0.9;      // decay when not idle/transition (per second)
-
-    // simple value noise
+    // small value noise helpers
     function nrand(i){ let x = Math.sin(i*127.1)*43758.5453; return x - Math.floor(x); }
     function noise1(x, seed=0){
       const s = x*0.015 + seed*19.19;
@@ -183,16 +192,19 @@
     function drawWaves(t){
       ctx.fillStyle = COLOR_LIGHT; ctx.fillRect(0,0,width,height);
 
-      // draw in a rotated space so bands are NNE->SSW
+      // ease wave rotation toward target
+      const rotStep = 1 - Math.exp(-WAVE_ROT_EASE_RATE * Math.min(0.033, (timeSec - (lastFrameTime||timeSec))));
+      waveRot += (waveRotTarget - waveRot) * rotStep;
+
       const diag = Math.hypot(width, height);
       const W = diag, H = diag;
 
       ctx.save();
       ctx.translate(width/2, height/2);
-      ctx.rotate(WAVE_ROT);
+      ctx.rotate(waveRot);
       ctx.translate(-W/2, -H/2);
 
-      // apply controllable drift offset (in rotated space)
+      // drift offset in rotated space
       ctx.translate(waveFlowX, waveFlowY);
 
       ctx.fillStyle = COLOR_DARK;
@@ -203,7 +215,6 @@
 
       ctx.restore();
     }
-
     function drawLayer(t, yOffset, gap, seed, W, H){
       for(let base = yOffset - 60; base < H + gap; base += gap){
         drawRibbon(base, t, seed, W, H);
@@ -219,30 +230,115 @@
       ctx.closePath(); ctx.fill();
     }
 
-    // ---- Motion / state ----
+    // ---------- Motion / state ----------
     function angDiff(a,b){ let d=(b-a+Math.PI)%(2*Math.PI); if(d<0)d+=2*Math.PI; return d-Math.PI; }
+    function approachAngle(a, target, rate, dt){
+      const d = angDiff(a, target);
+      return a + d * (1 - Math.exp(-rate * dt)); // smooth exponential approach
+    }
     const IDLE_DIST = 0.5;
 
     function setMode(newMode){
       mode = newMode;
-      // reset wave flow gradually based on mode switch
-      if (mode === MODE.ACTIVE){
-        // let flow decay toward 0
-      }
-      // in transition/idle, flow direction will be set each frame toward center
+      // logotype fades out during non-idle; fades in during idle
+      logoAlphaTarget = (mode === MODE.LOGO_IDLE) ? 1 : 0;
+    }
+
+    function applyWaveFlowTowardCenter(strength, dt){
+      const cx = width/2, cy = height/2;
+      const dx = cx - kayak.x, dy = cy - kayak.y;
+      const dist = Math.hypot(dx,dy) || 1;
+      const vx = dx/dist, vy = dy/dist;              // screen-space unit vector
+      // rotate into current wave space (inverse of waveRot)
+      const cosR = Math.cos(-waveRot), sinR = Math.sin(-waveRot);
+      const vrx = vx * cosR - vy * sinR;
+      const vry = vx * sinR + vy * cosR;
+      waveFlowX += vrx * WAVE_FLOW_SPEED * strength * dt;
+      waveFlowY += vry * WAVE_FLOW_SPEED * strength * dt;
+      const wrap = waves.rowGap;
+      if (waveFlowX >  2*wrap) waveFlowX -= 2*wrap; if (waveFlowX < -2*wrap) waveFlowX += 2*wrap;
+      if (waveFlowY >  2*wrap) waveFlowY -= 2*wrap; if (waveFlowY < -2*wrap) waveFlowY += 2*wrap;
     }
 
     function updateBoatAndWaves(dt){
-      // size easing (mobile/desktop)
+      // size easing
       const k = Math.min(1, SIZE_EASE_PER_SEC * dt);
       currentLength += (targetLength - currentLength) * k;
 
-      const cx = width/2, cy = height/2;
+      // logo fade easing
+      const fadeK = 1 - Math.exp(-LOGO_FADE_RATE * dt);
+      logoAlpha += (logoAlphaTarget - logoAlpha) * fadeK;
+      logoAlpha = clamp(logoAlpha, 0, 1);
 
-      // ---- choose behavior per mode ----
+      const cx = width/2, cy = height/2;
+      const dx = kayak.tx-kayak.x, dy = kayak.ty-kayak.y, dist = Math.hypot(dx,dy);
+      const px = kayak.x, py = kayak.y;
+
+      // --- Mode transitions ---
+      const since = timeSec - lastUserTime;
       if (mode === MODE.ACTIVE){
-        const dx = kayak.tx-kayak.x, dy = kayak.ty-kayak.y, dist = Math.hypot(dx,dy);
-        const px = kayak.x, py = kayak.y;
+        // decay wave flow & ease rotation to base while active
+        const decay = Math.pow(WAVE_FLOW_DECAY, dt);
+        waveFlowX *= decay; waveFlowY *= decay;
+        waveRotTarget = BASE_WAVE_ROT;
+
+        if (since >= (IDLE_AFTER - PRE_IDLE_WINDOW) && dist <= IDLE_DIST){
+          setMode(MODE.PRE_IDLE);
+        }
+      }
+      else if (mode === MODE.PRE_IDLE){
+        // gently nudge waves toward center BEFORE we enter transition
+        applyWaveFlowTowardCenter(0.8, dt);
+
+        // ease wave rotation slightly for visual shift (not huge)
+        const angToCenter = Math.atan2(cy - kayak.y, cx - kayak.x);
+        const desiredRot = BASE_WAVE_ROT + clamp(angDiff(BASE_WAVE_ROT, angToCenter - Math.PI/2), -0.25, 0.25) * 0.25;
+        waveRotTarget = desiredRot;
+
+        if (since >= IDLE_AFTER && dist <= IDLE_DIST){
+          kayak.tx = cx; kayak.ty = cy;
+          setMode(MODE.TRANSITION);
+        }
+      }
+      else if (mode === MODE.TRANSITION){
+        // ease position to center
+        const toCdx = cx-kayak.x, toCdy = cy-kayak.y, toCdist = Math.hypot(toCdx,toCdy);
+        const dirX = toCdist>1e-3 ? toCdx/toCdist : 0, dirY = toCdist>1e-3 ? toCdy/toCdist : 0;
+        const desired = Math.min(kayak.maxSpeed*0.5, toCdist * (kayak.arriveGain*0.9));
+        kayak.x += dirX * desired * dt; kayak.y += dirY * desired * dt;
+
+        // slow gentle yaw to NORTH
+        kayak.angle = approachAngle(kayak.angle, NORTH, 0.8, dt);
+
+        // waves push toward center and ease rotation back near base
+        applyWaveFlowTowardCenter(1.0, dt);
+        waveRotTarget = BASE_WAVE_ROT;
+
+        // settle into idle when centered-ish
+        if (toCdist < 1.2){
+          setMode(MODE.LOGO_IDLE);   // this will fade the logo in smoothly
+          kayak.x = cx; kayak.y = cy; kayak.angle = NORTH;
+        }
+      }
+      else if (mode === MODE.LOGO_IDLE){
+        // always north-ish
+        kayak.angle = approachAngle(kayak.angle, NORTH, 1.2, dt);
+
+        // *** weaker recentering so it can drift ~4× farther ***
+        const toCdx = cx-kayak.x, toCdy = cy-kayak.y, toCdist = Math.hypot(toCdx,toCdy);
+        if (toCdist > 0.25){
+          const dirX = toCdx/toCdist, dirY = toCdy/toCdist;
+          const drift = Math.min(7, toCdist*0.5); // was 18 / 2 → 4× weaker pull
+          kayak.x += dirX * drift * dt; kayak.y += dirY * drift * dt;
+        }
+
+        // waves: slow ambient rotation + slight inward drift
+        waveRotTarget = BASE_WAVE_ROT + 0.10 * Math.sin(timeSec * 0.08);
+        applyWaveFlowTowardCenter(0.35, dt);
+      }
+
+      // --- ACTIVE boat movement ---
+      if (mode === MODE.ACTIVE){
         if (dist > IDLE_DIST){
           const dirX=dx/dist, dirY=dy/dist;
           const desired=Math.min(kayak.maxSpeed, dist*kayak.arriveGain);
@@ -253,81 +349,13 @@
           const maxStep = kayak.turnRate*dt;
           kayak.angle += Math.sign(diff)*Math.min(Math.abs(diff), maxStep);
         }
-        kayak.speed = Math.hypot(kayak.x - px, kayak.y - py) / dt;
-
-        // waves: decay flow when active
-        const decay = Math.pow(WAVE_FLOW_DECAY, dt); // per-sec decay
-        waveFlowX *= decay; waveFlowY *= decay;
-
-        // kick to TRANSITION after 12s of inactivity (and only if basically stopped)
-        const since = timeSec - lastUserTime;
-        if (since >= IDLE_AFTER && dist <= IDLE_DIST){
-          setMode(MODE.TRANSITION);
-          // set a gentle target to center
-          kayak.tx = cx; kayak.ty = cy;
-        }
       }
-      else if (mode === MODE.TRANSITION){
-        // move position toward center
-        const dx = cx-kayak.x, dy = cy-kayak.y, dist = Math.hypot(dx,dy);
-        const dirX = dist>1e-3 ? dx/dist : 0, dirY = dist>1e-3 ? dy/dist : 0;
-        const desired = Math.min(kayak.maxSpeed*0.55, dist * (kayak.arriveGain*0.9)); // gentler
-        kayak.x += dirX * desired * dt; kayak.y += dirY * desired * dt;
-        kayak.speed = desired; // approximate, fine for wake sampling
 
-        // rotate toward NORTH regardless of path
-        const diff = angDiff(kayak.angle, NORTH);
-        const maxStep = (kayak.turnRate*0.7) * dt; // rotate gently
-        if (Math.abs(diff) <= maxStep) kayak.angle = NORTH;
-        else kayak.angle += Math.sign(diff) * maxStep;
-
-        // wave flow: push toward center
-        if (dist > 1){
-          const vx = dx/dist, vy = dy/dist; // screen-space to center
-          // rotate into wave space (which was rotated by WAVE_ROT)
-          const vrx = vx * cosNegRot - vy * sinNegRot;
-          const vry = vx * sinNegRot + vy * cosNegRot;
-          waveFlowX += vrx * WAVE_FLOW_SPEED * dt;
-          waveFlowY += vry * WAVE_FLOW_SPEED * dt;
-          // keep offsets bounded (wrap roughly by rowGap)
-          const wrap = waves.rowGap;
-          if (waveFlowX >  2*wrap) waveFlowX -= 2*wrap; if (waveFlowX < -2*wrap) waveFlowX += 2*wrap;
-          if (waveFlowY >  2*wrap) waveFlowY -= 2*wrap; if (waveFlowY < -2*wrap) waveFlowY += 2*wrap;
-        }
-
-        // when close enough to north, switch to LOGO_IDLE
-        if (Math.abs(angDiff(kayak.angle, NORTH)) < 0.04){ // ~2.3°
-          setMode(MODE.LOGO_IDLE);
-        }
-      }
-      else if (mode === MODE.LOGO_IDLE){
-        // keep facing north
-        kayak.angle = NORTH;
-
-        // gentle drift toward exact center (very slow)
-        const dx = cx-kayak.x, dy = cy-kayak.y, dist = Math.hypot(dx,dy);
-        if (dist > 0.25){
-          const dirX = dx/dist, dirY = dy/dist;
-          const drift = Math.min(18, dist*2); // px/sec, mild
-          kayak.x += dirX * drift * dt; kayak.y += dirY * drift * dt;
-        }
-
-        // wave flow toward center
-        if (dist > 0.25){
-          const vx = dx/dist, vy = dy/dist;
-          const vrx = vx * cosNegRot - vy * sinNegRot;
-          const vry = vx * sinNegRot + vy * cosNegRot;
-          waveFlowX += vrx * WAVE_FLOW_SPEED * dt;
-          waveFlowY += vry * WAVE_FLOW_SPEED * dt;
-
-          const wrap = waves.rowGap;
-          if (waveFlowX >  2*wrap) waveFlowX -= 2*wrap; if (waveFlowX < -2*wrap) waveFlowX += 2*wrap;
-          if (waveFlowY >  2*wrap) waveFlowY -= 2*wrap; if (waveFlowY < -2*wrap) waveFlowY += 2*wrap;
-        }
-      }
+      // compute speed
+      kayak.speed = Math.hypot(kayak.x - px, kayak.y - py) / dt;
     }
 
-    // ---- Wake ----
+    // ---------- Wake ----------
     function updateWake(dt){
       for (let i=0;i<wake.points.length;i++) wake.points[i].age+=dt;
       while(wake.points.length && wake.points[0].age>wake.maxAge) wake.points.shift();
@@ -337,7 +365,7 @@
         const sx = kayak.x - Math.cos(kayak.angle)*sternOffset;
         const sy = kayak.y - Math.sin(kayak.angle)*sternOffset;
         const last = wake.points[wake.points.length-1];
-        const sampleDist = currentLength * 0.028; // proportional
+        const sampleDist = currentLength * 0.028;
         if(!last || Math.hypot(sx-last.x, sy-last.y) >= sampleDist){
           wake.points.push({x:sx,y:sy,age:0});
         }
@@ -368,33 +396,29 @@
       ctx.restore();
     }
 
-    // ---- Draw Boat (logo or kayak; same element/transform/size) ----
+    // ---------- Draw boat (center-pivot yaw; kayak always drawn, logotype fades) ----------
     function drawBoat(t){
       ctx.save();
-      // slight heave + port/starboard roll (even in idle, keep tiny life)
       const heave = Math.sin(t * kayak.rollSpeed * 2*Math.PI) * kayak.heaveAmp;
       const roll  = Math.sin(t * kayak.rollSpeed * 2*Math.PI) * kayak.rollAmp;
-
       ctx.translate(kayak.x, kayak.y + heave);
       ctx.rotate(kayak.angle + roll);
 
       const L = currentLength;
-      // For SVGs that face north: rotate +90° so "forward" is +X before our yaw
-      const drawAsLogo = (mode === MODE.LOGO_IDLE) && logoLoaded;
-      if (drawAsLogo){
-        ctx.rotate(Math.PI/2);
-        const targetH = L;
-        const ratio = logoImg.naturalWidth / logoImg.naturalHeight || 1;
-        const w = targetH * ratio, h = targetH;
-        ctx.drawImage(logoImg, -w/2, -h/2, w, h);
-      } else if (kayakLoaded){
-        ctx.rotate(Math.PI/2);
+
+      // Draw kayak (always visible)
+      if (kayakLoaded){
+        ctx.save();
+        ctx.rotate(Math.PI/2); // SVG faces north
         const targetH = L;
         const ratio = kayakImg.naturalWidth / kayakImg.naturalHeight || 1;
         const w = targetH * ratio, h = targetH;
+        ctx.globalAlpha = 1;
         ctx.drawImage(kayakImg, -w/2, -h/2, w, h);
+        ctx.restore();
       } else {
-        // fallback hull (burnt orange)
+        // fallback hull
+        ctx.save();
         const W = L * (40/140);
         ctx.fillStyle=COLOR_KAYAK; ctx.strokeStyle=COLOR_DARK; ctx.lineWidth=2;
         ctx.beginPath();
@@ -404,11 +428,25 @@
         ctx.quadraticCurveTo(-L/3,+W/3,0,+W/2.4);
         ctx.quadraticCurveTo(+L/6,+W/2,+L/2,0);
         ctx.closePath(); ctx.fill(); ctx.stroke();
+        ctx.restore();
       }
+
+      // Draw logotype on top (fades in/out)
+      if (logoLoaded && logoAlpha > 0.001){
+        ctx.save();
+        ctx.rotate(Math.PI/2); // faces north
+        const targetH = L;
+        const ratio = logoImg.naturalWidth / logoImg.naturalHeight || 1;
+        const w = targetH * ratio, h = targetH;
+        ctx.globalAlpha = logoAlpha;
+        ctx.drawImage(logoImg, -w/2, -h/2, w, h);
+        ctx.restore();
+      }
+
       ctx.restore();
     }
 
-    // ---- Ripple (still shows on clicks) ----
+    // ---------- Ripple ----------
     const ripple={x:0,y:0,t0:-10};
     function drawRipple(t){
       const e=t-ripple.t0; if(e<0||e>1.2) return;
@@ -418,29 +456,78 @@
       function circle(r){ ctx.beginPath(); ctx.arc(0,0,r,0,Math.PI*2); ctx.stroke(); }
     }
 
-    // ---- Input & Hint logic (inactivity-based) ----
+    // ---------- Input / idle hint ----------
     const hint = document.getElementById('hint');
     let hintTimer=null;
     function scheduleHint(){
       if(hintTimer) clearTimeout(hintTimer);
       hint.classList.remove('show');
-      hintTimer = setTimeout(()=>hint.classList.add('show'), 30000); // show after 30s idle
+      hintTimer = setTimeout(()=>hint.classList.add('show'), 30000);
     }
     scheduleHint();
 
+    // pointer state
+    let pointerDown=false, pointerPresent=false, pointerX=0, pointerY=0;
+
+    function canvasToLocal(e){
+      const r = canvas.getBoundingClientRect();
+      return { x: e.clientX - r.left, y: e.clientY - r.top };
+    }
+
+    // Move boat target (sets ripple & ACTIVE)
     function moveBoatTo(x,y){
       kayak.tx=x; kayak.ty=y;
       ripple.x=x; ripple.y=y; ripple.t0=timeSec;
     }
+
+    canvas.addEventListener('pointerenter',()=>{ pointerPresent=true; });
+    canvas.addEventListener('pointerleave',()=>{ pointerPresent=false; pointerDown=false; });
+    canvas.addEventListener('pointermove',(e)=>{ const p=canvasToLocal(e); pointerX=p.x; pointerY=p.y; });
+
     canvas.addEventListener('pointerdown',(e)=>{
-      const r=canvas.getBoundingClientRect();
-      moveBoatTo(e.clientX - r.left, e.clientY - r.top);
-      lastUserTime = timeSec;
-      // switch to ACTIVE immediately and draw kayak
-      setMode(MODE.ACTIVE);
-      hint.classList.remove('show');
-      scheduleHint();
+      pointerDown = true;
+      const p = canvasToLocal(e); pointerX=p.x; pointerY=p.y;
+
+      if (mode === MODE.LOGO_IDLE){
+        // idle: don't move yet; fade logotype out slowly as we LEAVE idle
+        lastUserTime = timeSec;
+        setMode(MODE.ACTIVE); // sets logoAlphaTarget=0 (fade-out)
+      } else {
+        // non-idle: move immediately on press
+        moveBoatTo(p.x, p.y);
+        lastUserTime = timeSec; setMode(MODE.ACTIVE);
+      }
+
+      hint.classList.remove('show'); scheduleHint();
     }, {passive:true});
+
+    canvas.addEventListener('pointerup',(e)=>{
+      const p = canvasToLocal(e); pointerX=p.x; pointerY=p.y;
+      pointerDown = false;
+
+      // In idle, we move on release (per spec)
+      if (mode === MODE.ACTIVE){
+        moveBoatTo(p.x, p.y);
+        lastUserTime = timeSec;
+      }
+    }, {passive:true});
+    canvas.addEventListener('pointercancel',()=>{ pointerDown=false; });
+
+    // ---------- Idle interactive bias toward cursor ----------
+    function idleCursorBias(dt){
+      if (mode !== MODE.LOGO_IDLE) return;
+      if (!pointerPresent) return;
+
+      const cx = kayak.x, cy = kayak.y;
+      const dx = pointerX - cx, dy = pointerY - cy;
+      const dist = Math.hypot(dx,dy);
+      if (dist < 1) return;
+
+      const dirX = dx/dist, dirY = dy/dist;
+      const biasSpeed = pointerDown ? 44 : 12; // ~4x stronger than before overall
+      kayak.x += dirX * biasSpeed * dt;
+      kayak.y += dirY * biasSpeed * dt;
+    }
 
     // Pause hint timer when tab hidden (resume on return)
     document.addEventListener('visibilitychange', () => {
@@ -448,18 +535,24 @@
       else { scheduleHint(); }
     });
 
-    // ---- Misc ----
+    // footer year
     document.getElementById('year').textContent = new Date().getFullYear();
 
-    // ---- Main loop ----
+    // ---------- Main loop ----------
+    let lastFrameTime = timeSec;
     function frame(now){
       const dt=Math.min(0.033,(now-last)/1000); last=now; timeSec+=dt;
+
       updateBoatAndWaves(dt);
+      idleCursorBias(dt);
       updateWake(dt);
+
       drawWaves(timeSec);
       drawWake();
       drawRipple(timeSec);
       drawBoat(timeSec);
+
+      lastFrameTime = timeSec;
       requestAnimationFrame(frame);
     }
     requestAnimationFrame(frame);
@@ -467,7 +560,7 @@
   </script>
 
   <script type="application/ld+json">
-  {"@context":"https://schema.org","@type":"Organization","name":"Bak-Yak Inc.","alternateName":"BakYak","url":"https://bakyak.ca","logo":"https://bakyak.ca/assets/logo.svg"}
+  {"@context":"https://schema.org","@type":"Organization","name":"Bak-Yak Inc.","alternateName":"BakYak","url":"https://bakyak.ca","logo":"https://bakyak.ca/assets/logotype.svg"}
   </script>
 </body>
 </html>
