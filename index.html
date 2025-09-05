@@ -1,216 +1,412 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
+  <title>BakYak — Collapsible Kayak Backpack | Coming Soon</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>bakyak.ca — coming soon</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <meta name="description" content="BakYak (Bak-Yak Inc.) — the collapsible kayak you carry as a backpack. Coming soon." />
+  <link rel="canonical" href="https://bakyak.ca/">
+  <meta name="theme-color" content="#C8692D" />
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="BakYak — Collapsible Kayak Backpack | Coming Soon">
+  <meta property="og:description" content="BakYak (Bak-Yak Inc.) — the collapsible kayak you carry as a backpack. Coming soon.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://bakyak.ca/">
+
+  <!-- CSP: allow inline script; no external connects needed now -->
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self';
+                 img-src 'self' data:;
+                 style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+                 font-src https://fonts.gstatic.com;
+                 script-src 'self' 'unsafe-inline';
+                 frame-ancestors 'none'">
+
+  <!-- Barlow Bold Italic -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Barlow:ital,wght@1,800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Barlow:ital,wght@1,700&display=swap" rel="stylesheet">
+
   <style>
-    :root {
-      --blue-light: #82C4D8;
-      --blue-dark: #3249A2;
-      --gold: #EAB534;
+    :root{
+      --light:#82C4D8;  /* water (light) */
+      --dark:#3249A2;   /* waves (dark) */
+      --text:#C8692D;   /* burnt orange for all text */
+    }
+    html,body{
+      height:100%;
+      margin:0;
+      background:var(--light);
+      color:var(--text);
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
     }
 
-    * { box-sizing: border-box; }
-    html, body { height: 100%; margin: 0; }
-    body {
-      min-height: 100vh;
-      background: var(--blue-light);
-      color: var(--gold);
-      display: grid;
-      place-items: center;
-      overflow: hidden;
-      font-family: 'Barlow', system-ui, -apple-system, 'Segoe UI', Roboto, Ubuntu, 'Helvetica Neue', Arial, sans-serif;
+    .wrap{
+      position:relative;
+      width:100vw;
+      height:100vh;
+      overflow:hidden;
     }
 
-    .headline {
-      position: fixed;
-      top: clamp(12px, 3vh, 28px);
-      left: 50%;
-      transform: translateX(-50%);
-      font-weight: 800;
-      font-style: italic;
-      font-size: clamp(22px, 5.5vw, 42px);
-      letter-spacing: 0.02em;
-      color: var(--gold);
-      z-index: 3;
-      user-select: none;
-      margin: 0;
+    .mast{
+      position:fixed;
+      top:12px; left:50%;
+      transform:translateX(-50%);
+      font:italic 700 28px/1 "Barlow", system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, "Helvetica Neue", Arial, sans-serif;
+      letter-spacing:.02em;
+      user-select:none;
+      text-shadow: 0 1px 0 #ffffff66;
     }
 
-    .centerpiece {
-      position: relative;
-      z-index: 4;
-      display: grid;
-      place-items: center;
-      width: 100%;
-      padding: clamp(16px, 2vw, 24px);
+    /* Canvas fills screen; default cursor */
+    #game{
+      width:100%;
+      height:100%;
+      display:block;
+      touch-action:manipulation;
     }
 
-    #kayakWrap { position: relative; will-change: transform; transform-origin: 50% 50%; display: inline-block; }
-
-    #kayakImg,
-    #kayakFallback {
-      width: clamp(140px, 28vw, 280px);
-      height: auto;
-      display: block;
-      background: transparent;
+    .hint{
+      position:fixed;
+      left:12px;
+      bottom:12px;
+      font:600 12px/1.35 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, "Helvetica Neue", Arial, sans-serif;
+      color:var(--text);
+      background:#ffffff66;
+      padding:6px 8px;
+      border-radius:6px;
+      user-select:none;
+      backdrop-filter: blur(4px);
+      opacity:0;
+      transition: opacity .8s ease;
     }
+    .hint.show{ opacity:.9; }
 
-    /* Fallback starts truly hidden to avoid flash before CSS */
-    #kayakFallback { display: none; position: absolute; inset: 0; }
-    #kayakFallback .gold { fill: var(--gold); }
-    #kayakFallback .water { fill: var(--blue-light); }
-
-    .waves {
-      position: fixed;
-      inset: 0;
-      width: 100%;
-      height: 100%;
-      z-index: 1;
-      pointer-events: none;
-    }
-
-    .strip:nth-child(odd)  { fill: var(--blue-dark); }
-    .strip:nth-child(even) { fill: var(--blue-light); }
-
-    footer {
-      position: fixed;
-      bottom: 8px;
-      left: 12px;
-      font-size: 12px;
-      color: var(--gold);
-      z-index: 5;
-      user-select: none;
+    .copy{
+      position:fixed;
+      right:12px; bottom:10px;
+      font:600 12px/1.35 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, "Helvetica Neue", Arial, sans-serif;
+      color:var(--text);
+      text-shadow: 0 1px 0 #ffffff66;
+      user-select:none;
     }
 
     @media (prefers-reduced-motion: reduce) {
-      #kayakWrap { transition: none !important; }
+      #game { animation: none; }
     }
   </style>
 </head>
 <body>
-  <h1 class="headline">coming soon...</h1>
+  <div class="wrap" aria-label="BakYak coming soon interactive scene">
+    <div class="mast" aria-hidden="true">coming soon…</div>
+    <canvas id="game"></canvas>
+    <div class="hint" id="hint">Click to move the kayak</div>
+    <div class="copy">© <span id="year"></span> Bak-Yak Inc.</div>
+  </div>
 
-  <!-- Abstract vertical wave strips (static paths, animated via transforms) -->
-  <svg id="waves" class="waves" viewBox="0 0 100 1000" preserveAspectRatio="none" aria-hidden="true">
-    <path class="strip" d="M 0 0 L 9 0 C 5 250, 13 750, 9 1000 L 0 1000 Z" />
-    <path class="strip" d="M 9 0 C 5 250, 13 750, 9 1000 L 18 1000 C 22 750, 14 250, 18 0 Z" />
-    <path class="strip" d="M 18 0 C 14 220, 22 420, 26 500 C 30 580, 20 780, 18 1000 L 27 1000 C 33 770, 29 560, 25 500 C 21 440, 30 240, 27 0 Z" />
-    <path class="strip" d="M 27 0 C 22 240, 34 440, 30 500 C 26 560, 26 760, 27 1000 L 36 1000 C 42 760, 38 560, 33 500 C 28 440, 40 240, 36 0 Z" />
-    <path class="strip" d="M 36 0 C 30 240, 40 440, 44 500 C 48 560, 36 760, 36 1000 L 45 1000 C 52 760, 47 560, 42 500 C 37 440, 50 240, 45 0 Z" />
-    <path class="strip" d="M 45 0 C 40 240, 50 460, 50 500 C 50 540, 40 760, 45 1000 L 54 1000 C 60 760, 56 560, 50 500 C 44 440, 58 240, 54 0 Z" />
-    <path class="strip" d="M 54 0 C 48 240, 62 440, 58 500 C 54 560, 50 760, 54 1000 L 63 1000 C 70 760, 64 560, 60 500 C 56 440, 68 240, 63 0 Z" />
-    <path class="strip" d="M 63 0 C 58 240, 70 440, 66 500 C 62 560, 62 760, 63 1000 L 72 1000 C 78 760, 72 560, 68 500 C 64 440, 76 240, 72 0 Z" />
-    <path class="strip" d="M 72 0 C 66 240, 78 440, 76 500 C 74 560, 66 760, 72 1000 L 81 1000 C 86 760, 82 560, 78 500 C 74 440, 86 240, 81 0 Z" />
-    <path class="strip" d="M 81 0 C 76 250, 86 750, 81 1000 L 90 1000 C 94 750, 86 250, 90 0 Z" />
-    <path class="strip" d="M 90 0 C 86 250, 98 750, 90 1000 L 100 1000 L 100 0 Z" />
-  </svg>
-
-  <main class="centerpiece">
-    <div id="kayakWrap" aria-hidden="false">
-      <img id="kayakImg" src="assets/emblem.svg" alt="Bakyak emblem — top-down kayak icon" />
-      <!-- Fallback oval kayak if emblem fails to load -->
-      <svg id="kayakFallback" viewBox="0 0 256 256" role="img" aria-label="Kayak icon fallback" style="display:none; position:absolute; inset:0;">
-        <g class="gold">
-          <path d="M128 8c-18 24-48 80-48 120s30 96 48 120c18-24 48-80 48-120S146 32 128 8z"/>
-          <ellipse class="water" cx="128" cy="128" rx="30" ry="22"/>
-          <ellipse class="gold" cx="128" cy="128" rx="22" ry="16"/>
-        </g>
-      </svg>
-    </div>
-  </main>
-
-  <footer>© Bak-Yak Inc.</footer>
+  <noscript>This page is interactive. Enable JavaScript to play with the kayak.</noscript>
 
   <script>
-    (function() {
-      const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      const strips = Array.from(document.querySelectorAll('#waves .strip'));
-      const wrap = document.getElementById('kayakWrap');
-      const img = document.getElementById('kayakImg');
-      const fb = document.getElementById('kayakFallback');
+  (() => {
+    'use strict';
 
-      // Keep fallback truly hidden until an error occurs
-      fb.style.display = 'none';
-      img.addEventListener('error', () => { img.style.display = 'none'; fb.style.display = 'block'; });
+    // ---------- Config / helpers ----------
+    const COLOR_LIGHT  = getCSS('--light',  '#82C4D8');
+    const COLOR_DARK   = getCSS('--dark',   '#3249A2');
+    const COLOR_KAYAK  = '#C8692D';
 
-      // --- v0.5: cursor-pointing rotation, NO wave influence on physics ---
-      let targetX = 0.5, targetY = 0.5; // pointer (0..1)
-      let x = 0.5, y = 0.5;             // kayak position (0..1)
-      let vx = 0, vy = 0;               // velocity (units/sec)
-      let angle = 0;                    // CSS rotation deg
+    function getCSS(varName, fallback){
+      const v = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+      return v || fallback;
+    }
+    function clamp(v, min, max){ return Math.max(min, Math.min(max, v)); }
 
-      const ORIENTATION_OFFSET = -90;   // emblem points up by default; tweak if needed
-      const SEEK_ACCEL = 1.8;           // accel toward cursor (scaled by distance)
-      const DAMP = 2.4;                 // velocity damping per second
-      const MAX_SPEED = 1.4;            // cap normalized speed
-      const ROT_LERP = 0.18;            // rotation smoothing
-      const ROT_DEADZONE = 0.012;       // don't update angle when very close to target
+    // ---------- Canvas ----------
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    let dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+    let width = 0, height = 0;
 
-      function setTarget(e){
-        const r = document.body.getBoundingClientRect();
-        targetX = Math.max(0, Math.min(1, (e.clientX - r.left)/r.width));
-        targetY = Math.max(0, Math.min(1, (e.clientY - r.top)/r.height));
+    // timers declared early
+    let timeSec = 0;
+    let last = performance.now();
+
+    const prefersReduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    // ---------- Kayak state ----------
+    const KAYAK_LENGTH = 70;
+    const kayak = {
+      x: 0, y: 0,
+      angle: -Math.PI/2,   // start facing north
+      tx: 0, ty: 0,
+      maxSpeed: 260,
+      arriveGain: 2.0,
+      bobAmp: 2.2,
+      bobSpeed: 1.6,
+      turnRate: 5.0,
+      speed: 0
+    };
+    let initialized = false;
+
+    // Prefer SVG kayak (bow faces north). Fallback to canvas hull.
+    const kayakImg = new Image();
+    kayakImg.decoding = 'async';
+    kayakImg.src = 'assets/kayak.svg';
+    let kayakImgLoaded = false;
+    kayakImg.onload = () => { kayakImgLoaded = true; };
+
+    // ---------- Wake ----------
+    const wake = { points: [], maxAge: 1.6, minSpeed: 40, sampleDist: 2.5, spreadMax: 14 };
+
+    // ---------- Resize ----------
+    function resize(){
+      dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+      const cssW = canvas.clientWidth, cssH = canvas.clientHeight;
+      canvas.width  = Math.round(cssW * dpr);
+      canvas.height = Math.round(cssH * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      width  = cssW; height = cssH;
+
+      if (!initialized) {
+        kayak.x = width/2; kayak.y = height/2;
+        kayak.tx = kayak.x; kayak.ty = kayak.y;
+        initialized = true;
+      } else {
+        kayak.x = clamp(kayak.x, 0, width);
+        kayak.y = clamp(kayak.y, 0, height);
+        kayak.tx = clamp(kayak.tx, 0, width);
+        kayak.ty = clamp(kayak.ty, 0, height);
       }
-      window.addEventListener('pointermove', setTarget, {passive:true});
-      window.addEventListener('pointerdown', setTarget, {passive:true});
+    }
+    window.addEventListener('resize', resize, { passive: true });
+    resize();
 
-      function wrapDeg(d){ return ((d + 180) % 360) - 180; }
+    // ---------- Waves ----------
+    const waves = {
+      wavelength: 220, thickness: 28,
+      amplitude1: 12, amplitude2: 8,
+      speed1: prefersReduce ? 0 : 0.60,
+      speed2: prefersReduce ? 0 : -0.30,
+      rowGap: 60, dxStep: 6
+    };
 
-      let last = performance.now();
-      function animate(now){
-        const dt = Math.min(0.032, (now - last)/1000);
-        last = now;
+    function drawWaves(t){
+      ctx.fillStyle = COLOR_LIGHT;
+      ctx.fillRect(0, 0, width, height);
 
-        // movement: pure seek (waves DO NOT affect physics)
-        const dx = targetX - x;
-        const dy = targetY - y;
-        const dist = Math.hypot(dx, dy) || 0.0001;
-        const ux = dx / dist, uy = dy / dist;
-        const accel = SEEK_ACCEL * Math.min(dist * 2.2, 1.6);
-
-        vx += (ux * accel) * dt;
-        vy += (uy * accel) * dt;
-
-        // damping & speed cap
-        const damp = Math.exp(-DAMP * dt);
-        vx *= damp; vy *= damp;
-        const sp = Math.hypot(vx, vy);
-        if (sp > MAX_SPEED) { vx = vx/sp * MAX_SPEED; vy = vy/sp * MAX_SPEED; }
-
-        x += vx * dt; y += vy * dt;
-        x = Math.max(0, Math.min(1, x));
-        y = Math.max(0, Math.min(1, y));
-
-        // rotation: always point bow toward cursor, smoothed. If extremely close, hold angle to avoid jitter.
-        const desired = wrapDeg(Math.atan2(dy, dx) * 180/Math.PI + ORIENTATION_OFFSET);
-        const diff = wrapDeg(desired - angle);
-        angle = dist > ROT_DEADZONE ? wrapDeg(angle + diff * ROT_LERP) : angle;
-
-        // Apply transform
-        const maxX = 36, maxY = 20; // px travel from center
-        const tx = (x - 0.5) * maxX * 2;
-        const ty = (y - 0.5) * maxY * 2;
-        wrap.style.transform = `translate(${tx}px, ${ty}px) rotate(${angle}deg)`;
-
-        // waves: purely visual, independent of kayak physics
-        const t = now * 0.001;
-        const sway = (x - 0.5) * 6; // slight bias so water appears to flow around kayak horizontally
-        strips.forEach((p, i) => {
-          const phase = i * 0.55;
-          const off = Math.sin(1.1*t + phase) * 2.2 + Math.sin(0.6*t + phase*1.7) * 1.0 + sway;
-          p.setAttribute('transform', `translate(${off},0)`);
-        });
-
-        if (!reduce) requestAnimationFrame(animate);
+      ctx.fillStyle = COLOR_DARK;
+      drawLayer(t, waves.amplitude1, waves.thickness, waves.wavelength, waves.speed1, waves.rowGap, 0);
+      ctx.globalAlpha = 0.7;
+      drawLayer(t, waves.amplitude2, waves.thickness * 0.85, waves.wavelength * 1.15, waves.speed2, waves.rowGap * 0.9, Math.PI / 3);
+      ctx.globalAlpha = 1;
+    }
+    function drawLayer(t, amp, thick, lambda, speed, gap, phaseOffset){
+      const k = (Math.PI * 2) / lambda;
+      const phase = (speed * t) + (phaseOffset || 0);
+      for (let base = -amp - thick; base < height + gap; base += gap){
+        const dx = waves.dxStep;
+        ctx.beginPath();
+        let x = 0, y = base + amp * Math.sin(k * 0 + phase) - thick/2;
+        ctx.moveTo(0, y);
+        for (x = 0; x <= width; x += dx){
+          y = base + amp * Math.sin(k * x + phase) - thick/2;
+          ctx.lineTo(x, y);
+        }
+        for (x = width; x >= 0; x -= dx){
+          y = base + amp * Math.sin(k * x + phase) + thick/2;
+          ctx.lineTo(x, y);
+        }
+        ctx.closePath();
+        ctx.fill();
       }
+    }
 
-      if (!reduce) requestAnimationFrame(animate);
-    })();
+    // ---------- Motion ----------
+    function angleDiff(a, b){
+      let d = (b - a + Math.PI) % (Math.PI * 2);
+      if (d < 0) d += Math.PI * 2;
+      return d - Math.PI;
+    }
+    function updateKayak(dt){
+      const dx = kayak.tx - kayak.x;
+      const dy = kayak.ty - kayak.y;
+      const dist = Math.hypot(dx, dy);
+
+      let prevX = kayak.x, prevY = kayak.y;
+      if (dist > 0.5){
+        const dirX = dx / dist, dirY = dy / dist;
+        const desired = Math.min(kayak.maxSpeed, dist * kayak.arriveGain);
+        kayak.x += dirX * desired * dt;
+        kayak.y += dirY * desired * dt;
+
+        const desiredAngle = Math.atan2(dirY, dirX);
+        const diff = angleDiff(kayak.angle, desiredAngle);
+        const maxStep = kayak.turnRate * dt;
+        if (Math.abs(diff) <= maxStep) kayak.angle = desiredAngle;
+        else kayak.angle += Math.sign(diff) * maxStep;
+      }
+      kayak.speed = Math.hypot(kayak.x - prevX, kayak.y - prevY) / dt;
+    }
+
+    // ---------- Wake ----------
+    function updateWake(dt){
+      for (let i=0; i<wake.points.length; i++) wake.points[i].age += dt;
+      while (wake.points.length && wake.points[0].age > wake.maxAge) wake.points.shift();
+      if (kayak.speed > wake.minSpeed){
+        const sx = kayak.x - Math.cos(kayak.angle) * (KAYAK_LENGTH/2 - 2);
+        const sy = kayak.y - Math.sin(kayak.angle) * (KAYAK_LENGTH/2 - 2);
+        const lastPt = wake.points[wake.points.length - 1];
+        if (!lastPt || Math.hypot(sx - lastPt.x, sy - lastPt.y) >= wake.sampleDist){
+          wake.points.push({ x: sx, y: sy, age: 0 });
+        }
+      }
+    }
+    function drawWake(){
+      const pts = wake.points;
+      if (pts.length < 2) return;
+      ctx.save();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      for (let i = 1; i < pts.length; i++){
+        const p0 = pts[i-1], p1 = pts[i];
+        const a = Math.min(1 - p0.age / wake.maxAge, 1 - p1.age / wake.maxAge);
+        if (a <= 0) continue;
+
+        ctx.globalAlpha = 0.18 * a * a;
+        ctx.lineWidth = 6 * a;
+        ctx.beginPath(); ctx.moveTo(p0.x, p0.y); ctx.lineTo(p1.x, p1.y); ctx.stroke();
+
+        const vx = p1.x - p0.x, vy = p1.y - p0.y, len = Math.hypot(vx, vy);
+        if (len > 0.0001){
+          const nx = vx/len, ny = vy/len, px = -ny, py = nx;
+          const s0 = wake.spreadMax * (1 - p0.age / wake.maxAge);
+          const s1 = wake.spreadMax * (1 - p1.age / wake.maxAge);
+
+          ctx.globalAlpha = 0.12 * a * a;
+          ctx.lineWidth = 3 * a;
+          ctx.beginPath(); ctx.moveTo(p0.x + px*s0, p0.y + py*s0); ctx.lineTo(p1.x + px*s1, p1.y + py*s1); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(p0.x - px*s0, p0.y - py*s0); ctx.lineTo(p1.x - px*s1, p1.y - py*s1); ctx.stroke();
+        }
+      }
+      ctx.restore();
+    }
+
+    // ---------- Draw kayak (SVG first, fallback to canvas) ----------
+    function drawKayak(t){
+      ctx.save();
+      const bob = Math.sin(t * kayak.bobSpeed * 2*Math.PI) * kayak.bobAmp;
+      ctx.translate(kayak.x, kayak.y + bob);
+
+      if (kayakImgLoaded){
+        ctx.rotate(kayak.angle + Math.PI/2); // SVG faces north
+        const targetH = KAYAK_LENGTH;
+        const ratio = kayakImg.naturalWidth / kayakImg.naturalHeight || 1;
+        const drawW = targetH * ratio, drawH = targetH;
+        ctx.drawImage(kayakImg, -drawW/2, -drawH/2, drawW, drawH);
+      } else {
+        ctx.rotate(kayak.angle);
+        const L = KAYAK_LENGTH, W = 20;
+        ctx.fillStyle = COLOR_KAYAK;
+        ctx.strokeStyle = COLOR_DARK;
+        ctx.lineWidth = 2;
+
+        ctx.beginPath();
+        ctx.moveTo(+L/2, 0);
+        ctx.quadraticCurveTo(+L/6, -W/2, 0, -W/2.4);
+        ctx.quadraticCurveTo(-L/3, -W/3, -L/2, 0);
+        ctx.quadraticCurveTo(-L/3, +W/3, 0, +W/2.4);
+        ctx.quadraticCurveTo(+L/6, +W/2, +L/2, 0);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Center line
+        ctx.beginPath();
+        ctx.moveTo(-L/2 + 6, 0);
+        ctx.lineTo(L/2 - 6, 0);
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = COLOR_DARK;
+        ctx.stroke();
+
+        // Cockpit
+        ctx.beginPath();
+        const c = 0.552284749831, cx=-L*0.05, cy=0, rx=12, ry=7;
+        ctx.moveTo(cx + rx, cy);
+        ctx.bezierCurveTo(cx + rx, cy + ry*c, cx + rx*c, cy + ry, cx, cy + ry);
+        ctx.bezierCurveTo(cx - rx*c, cy + ry, cx - rx, cy + ry*c, cx - rx, cy);
+        ctx.bezierCurveTo(cx - rx, cy - ry*c, cx - rx*c, cy - ry, cx, cy - ry);
+        ctx.bezierCurveTo(cx + rx*c, cy - ry, cx + rx, cy - ry*c, cx + rx, cy);
+        ctx.fillStyle = '#ffffff'; ctx.fill();
+        ctx.strokeStyle = COLOR_DARK; ctx.lineWidth = 1.5; ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    // ---------- Ripple ----------
+    const ripple = { x: 0, y: 0, t0: -10 };
+    function drawRipple(t){
+      const elapsed = t - ripple.t0;
+      if (elapsed < 0 || elapsed > 1.2) return;
+      const a = 1 - (elapsed / 1.2);
+      ctx.save();
+      ctx.translate(ripple.x, ripple.y);
+      ctx.strokeStyle = COLOR_DARK;
+      ctx.globalAlpha = 0.35 * a;
+      ctx.lineWidth = 2;
+      circle( elapsed * 120 ); circle( 12 + elapsed * 160 );
+      ctx.restore();
+      function circle(r){ ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI*2); ctx.stroke(); }
+    }
+
+    // ---------- Input ----------
+    function moveKayakTo(x, y){
+      kayak.tx = x; kayak.ty = y;
+      ripple.x = x; ripple.y = y; ripple.t0 = timeSec;
+    }
+    canvas.addEventListener('pointerdown', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      moveKayakTo(e.clientX - rect.left, e.clientY - rect.top);
+    }, { passive: true });
+
+    // Hint shows ~30s later
+    const hint = document.getElementById('hint');
+    setTimeout(() => hint.classList.add('show'), 30000);
+
+    // Footer year
+    document.getElementById('year').textContent = new Date().getFullYear();
+
+    // ---------- Main loop ----------
+    function frame(now){
+      const dt = Math.min(0.033, (now - last) / 1000);
+      last = now; timeSec += dt;
+
+      updateKayak(dt);
+      updateWake(dt);
+
+      drawWaves(timeSec);
+      drawWake();
+      drawRipple(timeSec);
+      drawKayak(timeSec);
+
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+
+  })();
+  </script>
+
+  <!-- Minimal Organization JSON-LD (SEO) -->
+  <script type="application/ld+json">
+  {
+    "@context":"https://schema.org",
+    "@type":"Organization",
+    "name":"Bak-Yak Inc.",
+    "alternateName":"BakYak",
+    "url":"https://bakyak.ca",
+    "logo":"https://bakyak.ca/assets/kayak.svg"
+  }
   </script>
 </body>
 </html>

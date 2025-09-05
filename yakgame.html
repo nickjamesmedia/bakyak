@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Minimal Kayak Demo</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root{
+      --light:#82C4D8; /* water (light) */
+      --dark:#3249A2;  /* waves + accents (dark) */
+      --kayak:#C8692D; /* burnt orange */
+    }
+    html,body{
+      height:100%;
+      margin:0;
+      background:var(--light);
+    }
+    #game{
+      width:100vw;
+      height:100vh;
+      display:block;
+      cursor:crosshair;
+      touch-action:manipulation;
+    }
+    .hint{
+      position:fixed;
+      left:12px;
+      bottom:12px;
+      font:500 12px/1.3 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, "Helvetica Neue", Arial, sans-serif;
+      color:#ffffffcc;
+      background:#00000022;
+      padding:6px 8px;
+      border-radius:6px;
+      user-select:none;
+      -webkit-user-select:none;
+      backdrop-filter: blur(4px);
+    }
+  </style>
+</head>
+<body>
+  <canvas id="game"></canvas>
+  <div class="hint">Click to move the kayak</div>
+
+  <script>
+  (() => {
+    'use strict';
+
+    // ---------- Colors ----------
+    const COLOR_LIGHT  = getCSS('--light',  '#82C4D8');
+    const COLOR_DARK   = getCSS('--dark',   '#3249A2');
+    const COLOR_KAYAK  = getCSS('--kayak',  '#C8692D'); // burnt orange
+
+    // ---------- Canvas ----------
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d'); // keep alpha so page bg shows on errors
+    let dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+    let width = 0, height = 0;
+
+    function getCSS(varName, fallback){
+      const v = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+      return v || fallback;
+    }
+    function clamp(v, min, max){ return Math.max(min, Math.min(max, v)); }
+
+    // ---------- Kayak state ----------
+    const KAYAK_LENGTH = 70; // used for drawing and wake stern position
+
+    const kayak = {
+      x: 0, y: 0, angle: 0,
+      tx: 0, ty: 0,
+      maxSpeed: 260,
+      arriveGain: 2.0,
+      bobAmp: 2.2,
+      bobSpeed: 1.6,
+      turnRate: 5.0,   // rad/s max turn speed (smoothness knob)
+      speed: 0         // computed each frame
+    };
+    let initialized = false;
+
+    // ---------- Wake state ----------
+    const wake = {
+      points: [],          // {x,y,age}
+      maxAge: 1.6,         // seconds
+      minSpeed: 40,        // px/s before wake appears
+      sampleDist: 2.5,     // px between stored points
+      spreadMax: 14        // max fan-out each side (px)
+    };
+
+    // ---------- Resize ----------
+    function resize(){
+      dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+      const cssW = canvas.clientWidth;
+      const cssH = canvas.clientHeight;
+      canvas.width  = Math.round(cssW * dpr);
+      canvas.height = Math.round(cssH * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      width  = cssW;
+      height = cssH;
+
+      if (!initialized) {
+        kayak.x = width/2; kayak.y = height/2;
+        kayak.tx = kayak.x; kayak.ty = kayak.y;
+        initialized = true;
+      } else {
+        kayak.x = clamp(kayak.x, 0, width);
+        kayak.y = clamp(kayak.y, 0, height);
+        kayak.tx = clamp(kayak.tx, 0, width);
+        kayak.ty = clamp(kayak.ty, 0, height);
+      }
+    }
+    window.addEventListener('resize', resize, { passive: true });
+    resize();
+
+    // ---------- Waves (two-colour illustration) ----------
+    const waves = {
+      wavelength: 220,
+      thickness:  28,
+      amplitude1: 12,
+      amplitude2: 8,
+      speed1: 0.60,
+      speed2: -0.30,
+      rowGap: 60,
+      dxStep: 6
+    };
+
+    function drawWaves(t){
+      ctx.fillStyle = COLOR_LIGHT;
+      ctx.fillRect(0, 0, width, height);
+
+      ctx.fillStyle = COLOR_DARK;
+      drawRibbonLayer(t, waves.amplitude1, waves.thickness, waves.wavelength, waves.speed1, waves.rowGap, 0);
+      ctx.globalAlpha = 0.7;
+      drawRibbonLayer(t, waves.amplitude2, waves.thickness * 0.85, waves.wavelength * 1.15, waves.speed2, waves.rowGap * 0.9, Math.PI / 3);
+      ctx.globalAlpha = 1;
+    }
+    function drawRibbonLayer(t, amp, thick, lambda, speed, gap, phaseOffset){
+      const k = (Math.PI * 2) / lambda;
+      const phase = t * speed + (phaseOffset || 0);
+      for (let base = -amp - thick; base < height + gap; base += gap){
+        drawWaveRibbon(base, amp, thick, k, phase);
+      }
+    }
+    function drawWaveRibbon(baseY, amp, thick, k, phase){
+      const dx = waves.dxStep;
+      ctx.beginPath();
+      let x = 0;
+      let y = baseY + amp * Math.sin(k * 0 + phase) - thick/2;
+      ctx.moveTo(0, y);
+      for (x = 0; x <= width; x += dx){
+        y = baseY + amp * Math.sin(k * x + phase) - thick/2;
+        ctx.lineTo(x, y);
+      }
+      for (x = width; x >= 0; x -= dx){
+        y = baseY + amp * Math.sin(k * x + phase) + thick/2;
+        ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // ---------- Physics / Steering ----------
+    function angleDiff(a, b){
+      let d = (b - a + Math.PI) % (Math.PI * 2);
+      if (d < 0) d += Math.PI * 2;
+      return d - Math.PI; // shortest signed difference (-PI..PI]
+    }
+
+    function updateKayak(dt){
+      const dx = kayak.tx - kayak.x;
+      const dy = kayak.ty - kayak.y;
+      const dist = Math.hypot(dx, dy);
+
+      // Move toward target with arrival slow-down
+      let prevX = kayak.x, prevY = kayak.y;
+      if (dist > 0.5){
+        const dirX = dx / dist;
+        const dirY = dy / dist;
+        const desired = Math.min(kayak.maxSpeed, dist * kayak.arriveGain);
+        kayak.x += dirX * desired * dt;
+        kayak.y += dirY * desired * dt;
+
+        // Smoothly turn toward movement heading
+        const desiredAngle = Math.atan2(dirY, dirX);
+        const diff = angleDiff(kayak.angle, desiredAngle);
+        const maxStep = kayak.turnRate * dt;
+        if (Math.abs(diff) <= maxStep) kayak.angle = desiredAngle;
+        else kayak.angle += Math.sign(diff) * maxStep;
+      }
+
+      // Compute actual speed for wake
+      kayak.speed = Math.hypot(kayak.x - prevX, kayak.y - prevY) / dt;
+    }
+
+    // ---------- Wake ----------
+    function updateWake(dt){
+      // age + prune
+      for (let i=0; i<wake.points.length; i++){
+        wake.points[i].age += dt;
+      }
+      while (wake.points.length && wake.points[0].age > wake.maxAge){
+        wake.points.shift();
+      }
+
+      // add new point at the stern when moving fast enough
+      if (kayak.speed > wake.minSpeed){
+        const sternX = kayak.x - Math.cos(kayak.angle) * (KAYAK_LENGTH/2 - 2);
+        const sternY = kayak.y - Math.sin(kayak.angle) * (KAYAK_LENGTH/2 - 2);
+        const last = wake.points[wake.points.length - 1];
+        if (!last || Math.hypot(sternX - last.x, sternY - last.y) >= wake.sampleDist){
+          wake.points.push({ x: sternX, y: sternY, age: 0 });
+        }
+      }
+    }
+
+    function drawWake(){
+      const pts = wake.points;
+      if (pts.length < 2) return;
+
+      ctx.save();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+
+      // Center foam line (tapers + fades)
+      for (let i = 1; i < pts.length; i++){
+        const p0 = pts[i-1], p1 = pts[i];
+        const a = Math.min(1 - p0.age / wake.maxAge, 1 - p1.age / wake.maxAge);
+        if (a <= 0) continue;
+        ctx.globalAlpha = 0.18 * a * a;
+        ctx.lineWidth = 6 * a;
+        ctx.beginPath();
+        ctx.moveTo(p0.x, p0.y);
+        ctx.lineTo(p1.x, p1.y);
+        ctx.stroke();
+
+        // Subtle V-fan to each side
+        const vx = p1.x - p0.x, vy = p1.y - p0.y;
+        const len = Math.hypot(vx, vy);
+        if (len > 0.0001){
+          const nx = vx / len, ny = vy / len;
+          const px = -ny, py = nx; // left-perp
+          const s0 = wake.spreadMax * (1 - p0.age / wake.maxAge);
+          const s1 = wake.spreadMax * (1 - p1.age / wake.maxAge);
+
+          ctx.globalAlpha = 0.12 * a * a;
+          ctx.lineWidth = 3 * a;
+          // left arm
+          ctx.beginPath();
+          ctx.moveTo(p0.x + px * s0, p0.y + py * s0);
+          ctx.lineTo(p1.x + px * s1, p1.y + py * s1);
+          ctx.stroke();
+          // right arm
+          ctx.beginPath();
+          ctx.moveTo(p0.x - px * s0, p0.y - py * s0);
+          ctx.lineTo(p1.x - px * s1, p1.y - py * s1);
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
+    }
+
+    // ---------- Kayak drawing ----------
+    function drawKayak(t){
+      ctx.save();
+      const bob = Math.sin(t * kayak.bobSpeed * 2*Math.PI) * kayak.bobAmp;
+      ctx.translate(kayak.x, kayak.y + bob);
+      ctx.rotate(kayak.angle);
+
+      const L = KAYAK_LENGTH;
+      const W = 20;
+
+      // Hull (burnt orange)
+      ctx.fillStyle = COLOR_KAYAK;
+      ctx.strokeStyle = COLOR_DARK;
+      ctx.lineWidth = 2;
+
+      ctx.beginPath();
+      ctx.moveTo(+L/2, 0);                 // bow
+      ctx.quadraticCurveTo(+L/6, -W/2, 0, -W/2.4);
+      ctx.quadraticCurveTo(-L/3, -W/3, -L/2, 0); // stern
+      ctx.quadraticCurveTo(-L/3, +W/3, 0, +W/2.4);
+      ctx.quadraticCurveTo(+L/6, +W/2, +L/2, 0);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      // Center line
+      ctx.beginPath();
+      ctx.moveTo(-L/2 + 6, 0);
+      ctx.lineTo(L/2 - 6, 0);
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = COLOR_DARK;
+      ctx.stroke();
+
+      // Cockpit
+      ctx.beginPath();
+      const cx = -L*0.05, cy = 0, rx = 12, ry = 7;
+      ellipsePath(ctx, cx, cy, rx, ry);
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
+      ctx.strokeStyle = COLOR_DARK;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      ctx.restore();
+    }
+
+    function ellipsePath(ctx, cx, cy, rx, ry){
+      const c = 0.552284749831;
+      ctx.moveTo(cx + rx, cy);
+      ctx.bezierCurveTo(cx + rx, cy + ry*c, cx + rx*c, cy + ry, cx, cy + ry);
+      ctx.bezierCurveTo(cx - rx*c, cy + ry, cx - rx, cy + ry*c, cx - rx, cy);
+      ctx.bezierCurveTo(cx - rx, cy - ry*c, cx - rx*c, cy - ry, cx, cy - ry);
+      ctx.bezierCurveTo(cx + rx*c, cy - ry, cx + rx, cy - ry*c, cx + rx, cy);
+    }
+
+    // ---------- Click ripple ----------
+    const ripple = { x: 0, y: 0, t0: -10 };
+    function drawRipple(t){
+      const elapsed = t - ripple.t0;
+      if (elapsed < 0 || elapsed > 1.2) return;
+      const a = 1 - (elapsed / 1.2);
+      ctx.save();
+      ctx.translate(ripple.x, ripple.y);
+      ctx.strokeStyle = COLOR_DARK;
+      ctx.globalAlpha = 0.35 * a;
+      ctx.lineWidth = 2;
+      circle( elapsed * 120 );
+      circle( 12 + elapsed * 160 );
+      ctx.restore();
+      function circle(r){
+        ctx.beginPath();
+        ctx.arc(0, 0, r, 0, Math.PI*2);
+        ctx.stroke();
+      }
+    }
+
+    // ---------- Input ----------
+    canvas.addEventListener('pointerdown', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      kayak.tx = x;
+      kayak.ty = y;
+      ripple.x = x;
+      ripple.y = y;
+      ripple.t0 = timeSec;
+    });
+
+    // ---------- Main loop ----------
+    let last = performance.now();
+    let timeSec = 0;
+
+    function frame(now){
+      const dt = Math.min(0.033, (now - last) / 1000); // clamp to ~30ms
+      last = now;
+      timeSec += dt;
+
+      updateKayak(dt);
+      updateWake(dt);
+
+      drawWaves(timeSec);
+      drawWake();
+      drawRipple(timeSec);
+      drawKayak(timeSec);
+
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  })();
+  </script>
+</body>
+</html>
